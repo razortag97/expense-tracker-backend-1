@@ -26,7 +26,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: pip
 
       - name: install scanner binaries
         run: |
@@ -37,6 +36,8 @@ jobs:
           curl -sSL https://github.com/google/osv-scanner/releases/download/v1.9.2/osv-scanner_linux_amd64 \
             -o /usr/local/bin/osv-scanner
           chmod +x /usr/local/bin/osv-scanner
+          gitleaks version          # ← prove it installed
+          osv-scanner --version     # ← prove it installed
 
       - name: install gate
         run: pip install pyyaml
@@ -51,6 +52,7 @@ jobs:
             --policy .security/policy.yml \
             --output-dir .security/out \
             --repo-slug ${{ github.repository }} \
+            --log-level DEBUG \
             --dashboard-url https://sec.example.com/pr/${{ github.event.pull_request.number }}
         continue-on-error: true    # we want the comment posted even on failure
 
