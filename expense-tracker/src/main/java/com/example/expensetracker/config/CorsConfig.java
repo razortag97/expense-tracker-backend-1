@@ -6,6 +6,9 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {
+	
+	String AWS_KEY = "AKIAIOSFODNN7EXAMPLE";
+	
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/api/**")
