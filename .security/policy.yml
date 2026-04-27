@@ -1,0 +1,96 @@
+# ------------------------------------------------------------------------------
+# Security gate policy
+#
+# This file is the single source of truth for what blocks a PR. Scanners produce
+# findings; this file decides which findings matter.
+#
+# Any change here is a reviewable PR — that's deliberate. Threshold changes,
+# allowlist additions, and waivers all have git blame and code review behind
+# them, which is the audit trail security teams need.
+#
+# Loaded by security_gate.py -> Policy.load(). Unknown keys are ignored so
+# it's safe to add fields here ahead of script support.
+# ------------------------------------------------------------------------------
+
+# --- Severity thresholds ------------------------------------------------------
+# Findings at or above these severities block the PR. Everything below is
+# informational — shown in the PR comment but not failing the check.
+#
+# Why the asymmetry (high for secrets, critical for CVEs):
+#   - A "high" secret (e.g. a GitHub PAT with repo scope) is already a real
+#     credential in git history. The cost of a false positive is one rotation;
+#     the cost of a false negative is an incident.
+#   - A "high" CVE is often not exploitable in your specific context (wrong
+#     call path, wrong config, not internet-facing). Blocking on every high
+#     CVE trains developers to bypass. We block on critical and surface
+#     high as informational with an SLA.
+#
+# Values: critical | high | medium | low | info
+block_severity_secret: high
+block_severity_cve: critical
+
+# --- SLA: how long a finding can exist before it must be fixed ----------------
+# The clock starts at introduced_at (commit date for secrets, CVE publication
+# date for dependencies — whichever was later). Past-SLA findings block
+# regardless of severity threshold; that's enforced by the gate, not policy.
+#
+# These are calendar days, not business days. Security incidents don't respect
+# sprint boundaries.
+sla_days:
+  critical: 7
+  high: 14
+  medium: 30
+  low: 90
+
+# --- Secret allowlists --------------------------------------------------------
+# Allowlists apply ONLY to secret findings. SCA/CVE findings are never
+# path-allowlisted — a vulnerable dependency is vulnerable regardless of where
+# its lockfile lives.
+#
+# Use sparingly. Each entry here is a decision that "strings matching this
+# pattern in this location are intentional." If you find yourself adding a
+# fifth path, the rule is probably wrong.
+
+# Glob patterns (fnmatch syntax) for paths where secret-like strings are
+# expected and safe. Test fixtures and documentation examples are the two
+# legitimate cases; production code is never one of them.
+secret_allowlist_paths:
+  - "tests/fixtures/**"
+  - "tests/**/vcr_cassettes/**"      # recorded HTTP responses with fake tokens
+  - "docs/examples/**"
+  - "**/*.example.env"               # template files ending in .example.env
+
+# Rule IDs to suppress globally. Prefer path allowlists over rule allowlists —
+# a rule allowlist turns off a detection for the entire repo, which is a big
+# hammer. Use this only for detectors with chronic false positives in your
+# codebase.
+secret_allowlist_rules: []
+  # - "generic-api-key"   # example — we rely on specific-provider rules instead
+
+# --- Waivers ------------------------------------------------------------------
+# A waiver is a time-bounded, attributed exception for a specific finding
+# (identified by its fingerprint from the previous gate run). Waivers are the
+# escape hatch that prevents developers from disabling the whole job when they
+# hit a false positive or a fix they genuinely can't ship today.
+#
+# How to add one:
+#   1. The developer comments `/security-gate waive <fingerprint> <reason>`
+#      on their PR.
+#   2. A security-team approver reviews and, if approved, merges a PR adding
+#      the fingerprint here.
+#   3. The gate re-runs and the finding moves from "blocking" to "waived"
+#      until `until:` passes.
+#
+# Fingerprints are in the PR comment next to each finding. They're stable
+# across runs by design (see _fingerprint in security_gate.py).
+#
+# Waivers expire. There is no "permanent" waiver — if the finding is a true
+# false positive, fix the scanner rule or add an allowlist entry. If it's a
+# real issue you're accepting, re-review it quarterly.
+waivers: {}
+  # Example:
+  # "7a3c9e12":
+  #   reason: "AWS key is a sandboxed test account, rotated monthly via Terraform"
+  #   approver: "security-team@acme.com"
+  #   until: "2026-07-01T00:00:00Z"
+  #   ticket: "SEC-482"   # extra context; ignored by the gate but useful for audit

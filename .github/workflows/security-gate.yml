@@ -1,0 +1,71 @@
+name: security gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read          # read the code to scan it
+  pull-requests: write    # post the PR comment
+  checks: write           # create the check run
+  issues: write           # allow /security-gate waive comment commands
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: checkout PR with history
+        uses: actions/checkout@v4
+        with:
+          # We need base..HEAD for the secrets diff scan, so fetch both.
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: set up python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: install scanner binaries
+        run: |
+          # gitleaks — pin by version for reproducibility
+          curl -sSL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz \
+            | tar -xz -C /usr/local/bin gitleaks
+          # osv-scanner
+          curl -sSL https://github.com/google/osv-scanner/releases/download/v1.9.2/osv-scanner_linux_amd64 \
+            -o /usr/local/bin/osv-scanner
+          chmod +x /usr/local/bin/osv-scanner
+
+      - name: install gate
+        run: pip install pyyaml
+
+      - name: run security gate
+        id: gate
+        run: |
+          python .security/security_gate.py \
+            --repo-path . \
+            --base-ref origin/${{ github.event.pull_request.base.ref }} \
+            --head-sha ${{ github.event.pull_request.head.sha }} \
+            --policy .security/policy.yml \
+            --output-dir .security/out \
+            --repo-slug ${{ github.repository }} \
+            --dashboard-url https://sec.example.com/pr/${{ github.event.pull_request.number }}
+        continue-on-error: true    # we want the comment posted even on failure
+
+      - name: post PR comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: security-gate
+          path: .security/out/comment.md
+
+      - name: upload findings artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-findings
+          path: .security/out/
+
+      - name: fail the job if gate blocked
+        if: steps.gate.outcome == 'failure'
+        run: exit 1
