@@ -50,6 +50,7 @@ jobs:
             --policy .security/policy.yml \
             --output-dir .security/out \
             --repo-slug ${{ github.repository }} \
+            --log-level DEBUG \
             --dashboard-url https://sec.example.com/pr/${{ github.event.pull_request.number }}
         continue-on-error: true    # we want the comment posted even on failure
 
