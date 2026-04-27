@@ -36,6 +36,8 @@ jobs:
           curl -sSL https://github.com/google/osv-scanner/releases/download/v1.9.2/osv-scanner_linux_amd64 \
             -o /usr/local/bin/osv-scanner
           chmod +x /usr/local/bin/osv-scanner
+          gitleaks version          # ← prove it installed
+          osv-scanner --version     # ← prove it installed
 
       - name: install gate
         run: pip install pyyaml
